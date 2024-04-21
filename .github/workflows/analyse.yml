@@ -1,0 +1,100 @@
+name: Analyse Leap dataset
+
+env: 
+  CACHE_NUMBER: 0
+
+on:
+  workflow_dispatch:
+    inputs:
+      target:
+        description: "List of Targets"
+        type: string
+        default: ptend_u_14
+
+defaults:
+  run:
+    shell: bash
+    working-directory: /home/runner/work/
+  
+jobs:
+  cache_env:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache enviroment
+        uses: actions/cache@v3
+        with:
+          path:  /home/runner/work/leap/leap/test_env
+          key: ${{ runner.os }}-env
+        id: cache
+
+      - name: Cache data
+        uses: actions/cache@v3
+        with:
+          path:  /home/runner/work/leap/leap/data
+          key: ${{ runner.os }}-data
+        id: cache_data
+
+      - name: Install enviroment
+        if: steps.cache.outputs.cache-hit != 'true'
+        run: |
+                echo "Install enviroment"
+                cd leap
+                git clone --depth 1 --branch main https://github.com/janoPig/leap.git temp_directory
+                mv temp_directory/* leap
+                rm -rf temp_directory
+                cd leap
+                chmod +x ./install_env.sh
+                ./install_env.sh
+
+      - name: Download data
+        if: steps.cache_data.outputs.cache-hit != 'true'
+        run: |
+                echo "Download data"
+                wget https://huggingface.co/datasets/Jano123/Leap-sample/resolve/main/df_sample.parquet -O ./leap/leap/data/df_sample.parquet
+
+  analyse:
+    needs: cache_env
+    strategy:
+      matrix:
+        seed: [123, 1, 2, 3, 4]
+    env:
+      SEED: ${{ matrix.seed }}
+      TARGET: ${{ github.event.inputs.target }} 
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cache enviroment
+        uses: actions/cache@v3
+        with:
+          path:  /home/runner/work/leap/leap/test_env
+          key: ${{ runner.os }}-env
+        id: cache
+
+      - name: Cache data
+        uses: actions/cache@v3
+        with:
+          path:  /home/runner/work/leap/leap/data
+          key: ${{ runner.os }}-data
+        id: cache_data
+
+      - name: analyse
+        run: |
+                echo "analyse "$TARGET
+                mkdir -p output/output
+                cd leap
+
+                git clone --depth 1 --branch main https://github.com/janoPig/leap.git temp_directory
+                mkdir -p leap
+                mv -f temp_directory/code leap/code
+                # activate enviroment
+                source ./leap/test_env/bin/activate
+
+                # run experiment...
+                cd leap
+                python3 ./code/analyse.py --target $TARGET --random_seed $SEED --out_dir /home/runner/work/output/output
+
+      - name: Archive production artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: results_${{ github.event.inputs.target }}
+          path: |
+            /home/runner/work/output

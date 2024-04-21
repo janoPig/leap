@@ -1,0 +1,7 @@
+pandas
+numpy
+sympy
+scikit-learn
+fastparquet
+HROCH
+catboost
